@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "autofish",
+	"version": "${version}",
+	"name": "Autofish",
+	"description": "Autofisher that uses hypixel holograms for detection",
+	"authors": [
+		"Roboo"
+	],
+	"contact": {
+		"homepage": "TBD",
+		"sources": "TBD"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/autofish/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.roboo.Autofish"
+		]
+	},
+	"mixins": [
+		"autofish.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.2",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
