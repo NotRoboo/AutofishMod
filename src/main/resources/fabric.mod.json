@@ -16,7 +16,10 @@
 	"environment": "client",
 	"entrypoints": {
 		"client": [
-			"com.roboo.Autofish"
+			"com.roboo.Autofish",
+			"com.roboo.AutoParty",
+			"com.roboo.AutoDodge",
+			"com.roboo.AutoSharkEscape"
 		]
 	},
 	"mixins": [

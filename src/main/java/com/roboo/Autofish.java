@@ -17,140 +17,164 @@ import java.util.Random;
 
 public class Autofish implements ClientModInitializer {
 
-	private static final Minecraft mc = Minecraft.getInstance();
-	private static KeyMapping toggleKey;
-	private static boolean enabled = false;
+    private static final Minecraft mc = Minecraft.getInstance();
+    private static KeyMapping toggleKey;
+    private static boolean enabled = false;
 
-	private long lastCastTime = 0;
-	private long nextActionTime = 0;
-	private boolean waitingForHologram = false;
-	private boolean biteDetected = false;
-	private long biteTime = 0;
+    private static final double SAFE_X = -29.6;
+    private static final double SAFE_Y = 107;
+    private static final double SAFE_Z = -57.5;
+    private static final double SAFE_RADIUS = 2.0;
 
-	private final Random random = new Random();
+    private long lastCastTime = 0;
+    private long nextActionTime = 0;
+    private boolean waitingForHologram = false;
+    private boolean biteDetected = false;
+    private long biteTime = 0;
 
-	@Override
-	public void onInitializeClient() {
-		KeyMapping.Category category = KeyMapping.Category.register(
-				Identifier.fromNamespaceAndPath("autofish", "main")
-		);
+    private final Random random = new Random();
 
-		toggleKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
-				"Autofish",
-				InputConstants.Type.KEYSYM,
-				GLFW.GLFW_KEY_LEFT_ALT,
-				category
-		));
+    @Override
+    public void onInitializeClient() {
+        KeyMapping.Category category = KeyMapping.Category.register(
+                Identifier.fromNamespaceAndPath("autofish", "main")
+        );
 
-		ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
-	}
+        toggleKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "Autofish",
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_RIGHT_ALT,
+                category
+        ));
 
-	private void onTick(Minecraft client) {
-		if (toggleKey.consumeClick()) {
-			enabled = !enabled;
-			String msg = enabled ? "§aAutoFish Enabled" : "§cAutoFish Disabled";
-			client.gui.getChat().addMessage(Component.literal(msg));
-		}
+        ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+    }
 
-		if (!enabled || mc.player == null || mc.level == null) return;
+    private void onTick(Minecraft client) {
+        if (toggleKey.consumeClick()) {
+            enabled = !enabled;
+            String msg = enabled ? "§e[AutoFish] §aEnabled" : "§e[AutoFish] §cDisabled";
+            client.gui.getChat().addMessage(Component.literal(msg));
+        }
 
-		boolean holdingRod = mc.player.getMainHandItem().getItem() instanceof FishingRodItem ||
-				mc.player.getOffhandItem().getItem() instanceof FishingRodItem;
+        if (!enabled || mc.player == null || mc.level == null) return;
 
-		if (!holdingRod) {
-			resetState();
-			return;
-		}
+        if (isInSafeZone()) {
+            if (enabled) {
+                enabled = false;
+                resetState();
+                client.gui.getChat().addMessage(Component.literal("§e[AutoFish] §cDisabled (Safe Zone)"));
+            }
+            return;
+        }
 
-		long now = System.currentTimeMillis();
+        boolean holdingRod = mc.player.getMainHandItem().getItem() instanceof FishingRodItem ||
+                mc.player.getOffhandItem().getItem() instanceof FishingRodItem;
 
-		if (now < nextActionTime) return;
+        if (!holdingRod) {
+            resetState();
+            return;
+        }
 
-		// Auto cast when not fishing
-		if (!isFishing() && !waitingForHologram && !biteDetected) {
-			rightClick(client);
-			lastCastTime = now;
-			waitingForHologram = true;
-			return;
-		}
+        long now = System.currentTimeMillis();
 
-		// Check for timer hologram (4.5, 3.7, etc.)
-		if (waitingForHologram && now - lastCastTime > 700 && now - lastCastTime < 950) {
-			if (!hasTimerHologramAnywhere()) {
-				rightClick(client);
-				nextActionTime = now + random.nextInt(120, 200);
-				lastCastTime = now;
-				waitingForHologram = true;
-			} else {
-				waitingForHologram = false;
-			}
-		}
+        if (now < nextActionTime) return;
 
-		// Detect bite "!!!"
-		if (!biteDetected && hasBiteHologramAnywhere()) {
-			biteDetected = true;
-			biteTime = now + random.nextInt(140, 260);
-		}
+        // Auto cast when not fishing
+        if (!isFishing() && !waitingForHologram && !biteDetected) {
+            rightClick(client);
+            lastCastTime = now;
+            waitingForHologram = true;
+            return;
+        }
 
-		// Reel in after bite delay
-		if (biteDetected && now >= biteTime) {
-			rightClick(client);
-			nextActionTime = now + random.nextInt(180, 330);
-			lastCastTime = now;
-			waitingForHologram = true;
-			biteDetected = false;
-		}
-	}
+        // Check for timer hologram (4.5, 3.7, etc.)
+        if (waitingForHologram && now - lastCastTime > 700) {
+            if (!hasTimerHologramAnywhere()) {
+                rightClick(client);
+                nextActionTime = now + random.nextInt(50, 80);
+                lastCastTime = now;
+                waitingForHologram = true;
+            } else {
+                waitingForHologram = false;
+            }
+        }
 
-	private void resetState() {
-		waitingForHologram = false;
-		biteDetected = false;
-		nextActionTime = 0;
-	}
+        // Detect bite "!!!"
+        if (!biteDetected && hasBiteHologramAnywhere()) {
+            biteDetected = true;
+            biteTime = now + random.nextInt(50, 80);
+        }
 
-	private boolean isFishing() {
-		return mc.player != null && mc.player.fishing != null;
-	}
+        // Reel in after bite delay
+        if (biteDetected && now >= biteTime) {
+            rightClick(client);
+            nextActionTime = now + random.nextInt(50, 80);
+            lastCastTime = now;
+            waitingForHologram = true;
+            biteDetected = false;
+        }
+    }
 
-	private void rightClick(Minecraft client) {
-		if (mc.gameMode == null || mc.player == null) return;
-		mc.player.swing(InteractionHand.MAIN_HAND);
-		mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
-	}
+    private void resetState() {
+        waitingForHologram = false;
+        biteDetected = false;
+        nextActionTime = 0;
+    }
 
-	private boolean hasTimerHologramAnywhere() {
-		if (mc.level == null || mc.player == null) return false;
+    private boolean isFishing() {
+        return mc.player != null && mc.player.fishing != null;
+    }
 
-		return !mc.level.getEntitiesOfClass(ArmorStand.class,
-				mc.player.getBoundingBox().inflate(20),
-				stand -> {
-					if (!stand.isInvisible()) return false;
-					String clean = getCleanName(stand);
-					return clean.matches(".*\\d+\\.\\d+.*") || clean.contains("#.");
-				}).isEmpty();
-	}
+    private void rightClick(Minecraft client) {
+        if (mc.gameMode == null || mc.player == null) return;
+        mc.player.swing(InteractionHand.MAIN_HAND);
+        mc.gameMode.useItem(mc.player, InteractionHand.MAIN_HAND);
+    }
 
-	private boolean hasBiteHologramAnywhere() {
-		if (mc.level == null || mc.player == null) return false;
+    private boolean hasTimerHologramAnywhere() {
+        if (mc.level == null || mc.player == null) return false;
 
-		return !mc.level.getEntitiesOfClass(ArmorStand.class,
-				mc.player.getBoundingBox().inflate(80),
-				stand -> {
-					if (!stand.isInvisible()) return false;
-					String clean = getCleanName(stand);
-					return clean.contains("!!!");
-				}).isEmpty();
-	}
+        return !mc.level.getEntitiesOfClass(ArmorStand.class,
+                mc.player.getBoundingBox().inflate(20),
+                stand -> {
+                    if (!stand.isInvisible()) return false;
+                    String clean = getCleanName(stand);
+                    return clean.matches("^\\d+\\.\\d+$");
+                }).isEmpty();
+    }
 
-	private String getCleanName(ArmorStand stand) {
-		if (stand == null || !stand.hasCustomName()) return "";
+    private boolean hasBiteHologramAnywhere() {
+        if (mc.level == null || mc.player == null) return false;
 
-		var customName = stand.getCustomName();
-		if (customName == null) return "";
+        return !mc.level.getEntitiesOfClass(ArmorStand.class,
+                mc.player.getBoundingBox().inflate(15),
+                stand -> {
+                    if (!stand.isInvisible()) return false;
+                    String clean = getCleanName(stand);
+                    return clean.equals("!!!");
+                }).isEmpty();
+    }
 
-		String raw = customName.getString();
-		return raw.replaceAll("§[0-9a-fk-or]", "")
-				.replaceAll("&[0-9a-fk-or]", "")
-				.trim();
-	}
+    private String getCleanName(ArmorStand stand) {
+        if (stand == null || !stand.hasCustomName()) return "";
+
+        var customName = stand.getCustomName();
+        if (customName == null) return "";
+
+        String raw = customName.getString();
+        return raw.replaceAll("§[0-9a-fk-or]", "")
+                .replaceAll("&[0-9a-fk-or]", "")
+                .trim();
+    }
+
+    private boolean isInSafeZone() {
+        if (mc.player == null) return false;
+
+        double dx = mc.player.getX() - SAFE_X;
+        double dy = mc.player.getY() - SAFE_Y;
+        double dz = mc.player.getZ() - SAFE_Z;
+
+        return (dx * dx + dy * dy + dz * dz) <= (SAFE_RADIUS * SAFE_RADIUS);
+    }
 }
