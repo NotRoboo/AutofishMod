@@ -1,7 +1,6 @@
 package com.roboo;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.KeyMapping;
@@ -15,7 +14,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.Random;
 
-public class Autofish implements ClientModInitializer {
+public class Autofish {
 
     private static final Minecraft mc = Minecraft.getInstance();
     private static KeyMapping toggleKey;
@@ -34,8 +33,11 @@ public class Autofish implements ClientModInitializer {
 
     private final Random random = new Random();
 
-    @Override
-    public void onInitializeClient() {
+    public static boolean isEnabled() {
+        return enabled;
+    }
+
+    public void init() {
         KeyMapping.Category category = KeyMapping.Category.register(
                 Identifier.fromNamespaceAndPath("autofish", "main")
         );
@@ -80,7 +82,6 @@ public class Autofish implements ClientModInitializer {
 
         if (now < nextActionTime) return;
 
-        // Auto cast when not fishing
         if (!isFishing() && !waitingForHologram && !biteDetected) {
             rightClick(client);
             lastCastTime = now;
@@ -88,7 +89,6 @@ public class Autofish implements ClientModInitializer {
             return;
         }
 
-        // Check for timer hologram (4.5, 3.7, etc.)
         if (waitingForHologram && now - lastCastTime > 700) {
             if (!hasTimerHologramAnywhere()) {
                 rightClick(client);
@@ -100,13 +100,11 @@ public class Autofish implements ClientModInitializer {
             }
         }
 
-        // Detect bite "!!!"
         if (!biteDetected && hasBiteHologramAnywhere()) {
             biteDetected = true;
             biteTime = now + random.nextInt(50, 80);
         }
 
-        // Reel in after bite delay
         if (biteDetected && now >= biteTime) {
             rightClick(client);
             nextActionTime = now + random.nextInt(50, 80);

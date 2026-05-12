@@ -1,20 +1,20 @@
 package com.roboo;
 
-import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.client.Minecraft;
 
 import java.util.Locale;
-import java.util.Random;
 
-public class AutoParty implements ClientModInitializer {
+public class AutoParty {
 
     private static final Minecraft mc = Minecraft.getInstance();
-    private final Random random = new Random();
 
-    @Override
-    public void onInitializeClient() {
+    private static final int DROP_DELAY_TICKS = 4;
 
+    private int dropTicks = 0;
+
+    public void init() {
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             handleMessage(message.getString());
         });
@@ -22,33 +22,38 @@ public class AutoParty implements ClientModInitializer {
         ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, timestamp) -> {
             handleMessage(message.getString());
         });
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> onTick());
     }
 
     private void handleMessage(String msg) {
         if (msg == null) return;
+        if (!Autofish.isEnabled()) return;
 
         String clean = msg.toLowerCase(Locale.ROOT);
 
         if (clean.contains("to parry") || clean.contains("dodge parry")) {
-            triggerDropWithDelay();
+            dropTicks = DROP_DELAY_TICKS;
         }
     }
 
-    private void triggerDropWithDelay() {
-        new Thread(() -> {
-            try {
-                // 200–300ms delay
-                Thread.sleep(200 + random.nextInt(100));
+    private void onTick() {
+        if (!Autofish.isEnabled()) {
+            dropTicks = 0;
+            return;
+        }
 
+        if (dropTicks <= 0) return;
+
+        dropTicks--;
+
+        if (dropTicks == 0) {
+            if (mc.player == null || mc.gameMode == null) return;
+
+            mc.execute(() -> {
                 if (mc.player == null || mc.gameMode == null) return;
-
-                mc.execute(() -> {
-                    if (mc.player == null || mc.gameMode == null) return;
-                    mc.player.drop(false);
-                });
-
-            } catch (InterruptedException ignored) {
-            }
-        }).start();
+                mc.player.drop(false);
+            });
+        }
     }
 }

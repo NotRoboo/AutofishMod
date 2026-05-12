@@ -1,27 +1,26 @@
 package com.roboo;
 
-import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
-import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 
 import java.util.Locale;
-import java.util.Random;
 
-public class AutoDodge implements ClientModInitializer {
+public class AutoDodge {
 
     private static final Minecraft mc = Minecraft.getInstance();
-    private final Random random = new Random();
 
-    private volatile boolean dodging = false;
-    private volatile boolean forcedSneak = false;
+    private boolean dodging = false;
+    private boolean forcedSneak = false;
 
-    private volatile boolean parryActive = false;
-    private volatile int safeCount = 0;
-    private volatile int requiredSafes = 1;
+    private boolean parryActive = false;
+    private int safeCount = 0;
+    private int requiredSafes = 1;
 
-    @Override
-    public void onInitializeClient() {
+    private long dodgeStartTime = 0;
+    private static final long MAX_DODGE_TIME = 7000;
+
+    public void init() {
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             handleMessage(message.getString());
         });
@@ -29,38 +28,58 @@ public class AutoDodge implements ClientModInitializer {
         ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, timestamp) -> {
             handleMessage(message.getString());
         });
+
+        ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+    }
+
+    private void onTick(Minecraft client) {
+        if (mc.player == null) return;
+
+        if (!Autofish.isEnabled()) {
+            if (dodging) stopDodging();
+            return;
+        }
+
+        if (!dodging) return;
+
+        long now = System.currentTimeMillis();
+
+        if (now - dodgeStartTime > MAX_DODGE_TIME) {
+            stopDodging();
+            return;
+        }
+
+        var sneakKey = mc.options.keyShift;
+        if (!sneakKey.isDown()) {
+            sneakKey.setDown(true);
+            forcedSneak = true;
+        }
     }
 
     private void handleMessage(String msg) {
         if (msg == null) return;
+        if (!Autofish.isEnabled()) return;
 
         String clean = msg.toLowerCase(Locale.ROOT);
 
-        // PARRY
         if (clean.contains("parry") || clean.contains("parried")) {
             parryActive = true;
         }
 
-        // DODGE START
         if (clean.contains("hold shift to dodge") && !dodging) {
             requiredSafes = parryActive ? 2 : 1;
             safeCount = 0;
             startDodging();
         }
 
-        // SAFE
         if (clean.contains("safe")) {
-
-            // Consume SAFE for parry first
             if (parryActive) {
                 parryActive = false;
                 return;
             }
 
-            // Then apply to dodge
             if (dodging) {
                 safeCount++;
-
                 if (safeCount >= requiredSafes) {
                     stopDodging();
                 }
@@ -70,36 +89,20 @@ public class AutoDodge implements ClientModInitializer {
 
     private void startDodging() {
         dodging = true;
-
-        new Thread(() -> {
-            try {
-                // slight delay before starting (200–300 ms)
-                Thread.sleep(200 + random.nextInt(100));
-
-                if (mc.player == null) return;
-
-                KeyMapping sneakKey = mc.options.keyShift;
-
-                if (!sneakKey.isDown()) {
-                    sneakKey.setDown(true);
-                    forcedSneak = true;
-                }
-
-            } catch (InterruptedException ignored) {
-            }
-        }).start();
+        dodgeStartTime = System.currentTimeMillis();
+        safeCount = 0;
     }
 
     private void stopDodging() {
         if (mc.player == null) return;
 
-        KeyMapping sneakKey = mc.options.keyShift;
-
-        if (forcedSneak) {
+        var sneakKey = mc.options.keyShift;
+        if (forcedSneak || sneakKey.isDown()) {
             sneakKey.setDown(false);
-            forcedSneak = false;
         }
 
+        forcedSneak = false;
         dodging = false;
+        safeCount = 0;
     }
 }
